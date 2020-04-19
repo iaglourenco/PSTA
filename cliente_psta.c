@@ -78,7 +78,7 @@ int main(void){
                 goto erro;
             }
             server.sin_addr.s_addr=inetaddr;
-        }else server.sin_addr.s_addr=*((unsigned long *)hostnm->h_addr);
+        }else server.sin_addr.s_addr=*((unsigned long *)hostnm->h_addr_list[0]);
 
         printf("Socket fd=%i",ctS);
         if(connect(ctS,(struct sockaddr *)&server,sizeof(server)) < 0){
