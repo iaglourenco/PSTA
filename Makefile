@@ -1,6 +1,6 @@
 all: 
-	gcc cliente_psta.c -o cliente_psta
-	gcc servidor_psta.c -o servidor_psta
+	gcc cliente_psta.c -o cliente_psta -g 
+	gcc servidor_psta.c -o servidor_psta -g
 
 cliente: cliente_psta.c
 	gcc cliente_psta.c -o cliente_psta
