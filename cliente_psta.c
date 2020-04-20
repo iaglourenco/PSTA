@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <errno.h>
+#include <arpa/inet.h>
 
 #define CONECTAR "conectar"
 #define RECEBER "receber"
@@ -17,29 +18,29 @@
 #define PORTA 3315
 
 
+
 //#define DEBUG 1
 
 void help();
-int conectar();
-int enviar();
-int receber();
-int listar();
+int setup_dataS(struct sockaddr_in);
 
 int main(void){
 
-    char *comando[80],action[100];
-    int i=0,ctS,dataS,ret,isConnected=0,inetaddr;
+    char *comando[80],action[100],ctsBuf[20],datasBuf[200];
+    int i=0,ctS,dataS,ret,isConnected=0,inetaddr,namelen;
     struct hostent *hostnm;
-    struct sockaddr_in server;
-    if(ctS = socket(PF_INET,SOCK_STREAM,0) < 0){
+    struct sockaddr_in server,local;
+    
+    if((ctS = socket(PF_INET,SOCK_STREAM,0)) < 0){
         perror("Control Socket");
         exit(3);
     }
-    if(dataS = socket(PF_INET,SOCK_STREAM,0) < 0){
-        perror("Data Socket");
-        exit(3);
-    }
-    do{
+    local.sin_family=AF_INET;
+    local.sin_port = htons(PORTA);
+    
+    
+
+do{
     comando[0]=NULL;
     comando[1]=NULL;
     comando[2]=NULL;
@@ -80,32 +81,59 @@ int main(void){
             server.sin_addr.s_addr=inetaddr;
         }else server.sin_addr.s_addr=*((unsigned long *)hostnm->h_addr_list[0]);
 
-        printf("Socket fd=%i",ctS);
         if(connect(ctS,(struct sockaddr *)&server,sizeof(server)) < 0){
-            perror("ERRO - connect()");
+            perror("ERRO - connect(ctS)");
+
         }else{
-            printf("(conectado a %s:%s",comando[1],comando[2]);
+            isConnected=1;
+            printf("(conectado a %s na porta %s\n",comando[1],comando[2]);
+            //Somente aceitarei conexoes de dados deste servidor
+            if(inetaddr == INADDR_NONE)
+                local.sin_addr.s_addr = inetaddr;
+            else local.sin_addr.s_addr = *((unsigned long *)hostnm->h_addr_list[0]);
         }
-    
+
     }else if (strcmp(comando[0],RECEBER)==0){
         /*Receber aqui*/
+        if(!isConnected) printf("Por favor conecte-se antes!\n");
+
 
     }else if (strcmp(comando[0],ENVIAR)==0){
         /*Enviar aqui*/
-        
+        if(!isConnected) printf("Por favor conecte-se antes!\n");
+
+
     }else if (strcmp(comando[0],LISTAR)==0){
         /*Listar aqui*/
-        if(!isConnected) goto erro;
+        if(!isConnected) printf("Por favor conecte-se antes!\n");
+        if((send(ctS,LISTAR,sizeof(LISTAR),0)) < 0){
+            perror("ERRO - send(ctS)");
+        }else{
+            //configuro o socket de dados
+            dataS = setup_dataS(local);
+
+            namelen = sizeof(server);
+            if((dataS = accept(ctS,(struct sockaddr *)&server,(socklen_t *)&namelen))){
+                perror("ERRO - Accept(ctS)");
+            }else{
+                if((recv(dataS,datasBuf,sizeof(datasBuf),0)) == -1){
+                    perror("ERRO - Recv(dataS)");
+                }else
+                    fprintf(stdout,"%s",datasBuf);    
+
+            close(dataS);    
+            }
+        }
         
     }else if (strcmp(comando[0],ENCERRAR)==0){
         break;
     }else if (strcmp(comando[0],"clear\n") == 0 || strcmp(comando[0],"cls\n") == 0 ){
         system("clear");
-    }else if (strcmp(comando[0],"help\n") == 0)
-        help();   /* code */
+    }else if (strcmp(comando[0],"ajuda\n") == 0)
+        help();
     else{
 erro:
-        printf(" - Comando invalido! - \n\n");
+        printf("- Comando invalido! -\n- Se confuso esta, o comando 'ajuda' te guiara! - \n");
     }
     
 
@@ -125,22 +153,25 @@ void help(){
     printf("- %s <arquivo remoto> [<arquivo local>]\n",RECEBER);
     printf("- %s",LISTAR);
     printf("- %s",ENCERRAR);
+    printf("- ajuda\n");
+    printf("- cls/clear\n");
+}
+
+int setup_dataS(struct sockaddr_in local){
     
-}
-int conectar(){
-
-    return 0;
-}
-int enviar(){
-
-    return 0;
-}
-int receber(){
-    
-    return 0;
-}
-int listar(){
-
-    return 0;
+    int dataS;
+    if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
+        perror("ERRO - socket(dataS)");
+        return -1;
+    }
+    if(bind(dataS,(struct sockaddr *)&local,sizeof(local)) < 0){
+        perror("ERRO - bind()");
+        return -1;  
+    }
+    if(listen(dataS,1) != 0){
+        perror("ERRO - listen()");
+        return -1;
+    }
+    return dataS;
 }
 
