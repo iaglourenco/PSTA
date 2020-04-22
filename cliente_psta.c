@@ -29,22 +29,18 @@ int main(void){
     char *comando[80],action[100],ctsBuf[20],datasBuf[200];
     int i=0,ctS,dataS,ret,isConnected=0,inetaddr,namelen;
     struct hostent *hostnm;
-    struct sockaddr_in server,local;
+    struct sockaddr_in server,euMesmo;
     
     if((ctS = socket(PF_INET,SOCK_STREAM,0)) < 0){
         perror("Control Socket");
         exit(3);
     }
-    local.sin_family=AF_INET;
-    local.sin_port = htons(PORTA);
-    
-    
-
+  
 do{
     comando[0]=NULL;
     comando[1]=NULL;
     comando[2]=NULL;
-    printf("pstr>");  
+    printf("psta>");  
     fgets(action,sizeof(action),stdin);
     comando[0]=strtok(action," ");
     if(comando[0]!=NULL) comando[0][strlen(comando[0])]='\0';
@@ -87,10 +83,6 @@ do{
         }else{
             isConnected=1;
             printf("(conectado a %s na porta %s\n",comando[1],comando[2]);
-            //Somente aceitarei conexoes de dados deste servidor
-            if(inetaddr == INADDR_NONE)
-                local.sin_addr.s_addr = inetaddr;
-            else local.sin_addr.s_addr = *((unsigned long *)hostnm->h_addr_list[0]);
         }
 
     }else if (strcmp(comando[0],RECEBER)==0){
@@ -106,14 +98,14 @@ do{
     }else if (strcmp(comando[0],LISTAR)==0){
         /*Listar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
-        if((send(ctS,LISTAR,sizeof(LISTAR),0)) < 0){
+        if((send(ctS,comando[0],sizeof(comando[0]),0)) < 0){
             perror("ERRO - send(ctS)");
         }else{
             //configuro o socket de dados
-            dataS = setup_dataS(local);
+            dataS = setup_dataS(euMesmo);
 
             namelen = sizeof(server);
-            if((dataS = accept(ctS,(struct sockaddr *)&server,(socklen_t *)&namelen))){
+            if((dataS = accept(dataS,(struct sockaddr *)&server,(socklen_t *)&namelen))){
                 perror("ERRO - Accept(ctS)");
             }else{
                 if((recv(dataS,datasBuf,sizeof(datasBuf),0)) == -1){
@@ -149,22 +141,25 @@ void help(){
     printf("Ajuda: \n\n");
     printf("Comandos: \n");
     printf("- %s <nome do servidor> [<porta do servidor>]\n",CONECTAR);
-    printf("- %s <arquivo local> [<arquivo remoto>]\n",ENVIAR);
-    printf("- %s <arquivo remoto> [<arquivo local>]\n",RECEBER);
+    printf("- %s <arquivo euMesmo> [<arquivo remoto>]\n",ENVIAR);
+    printf("- %s <arquivo remoto> [<arquivo euMesmo>]\n",RECEBER);
     printf("- %s",LISTAR);
     printf("- %s",ENCERRAR);
     printf("- ajuda\n");
     printf("- cls/clear\n");
 }
 
-int setup_dataS(struct sockaddr_in local){
+int setup_dataS(struct sockaddr_in euMesmo){
     
     int dataS;
+    euMesmo.sin_family=AF_INET;
+    euMesmo.sin_port = htons(PORTA);
+    euMesmo.sin_addr.s_addr =INADDR_ANY;
     if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
         perror("ERRO - socket(dataS)");
         return -1;
     }
-    if(bind(dataS,(struct sockaddr *)&local,sizeof(local)) < 0){
+    if(bind(dataS,(struct sockaddr *)&euMesmo,sizeof(euMesmo)) < 0){
         perror("ERRO - bind()");
         return -1;  
     }
@@ -173,5 +168,6 @@ int setup_dataS(struct sockaddr_in local){
         return -1;
     }
     return dataS;
+    
 }
 
