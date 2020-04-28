@@ -107,6 +107,8 @@ ptr_thread_arg thread_arg = (ptr_thread_arg)arg;
 
 int ctS = thread_arg->ctS;
 int dataS = thread_arg->dataS;
+struct sockaddr_in client =thread_arg->client;
+client.sin_port = htons(3315);
 int pid_thread = pthread_self();
 char *comando[80];
 
@@ -128,9 +130,9 @@ printf("Conexao aceita de %s porta %d, iniciando thread!\n",
             printf("LOG - Recebendo arquivo\n");
         }else if (strcmp(comando[0],LISTAR) == 0){
             /* Enviar listagem ao cliente*/
-            dataS = setup_dataS(thread_arg->client);
+            dataS = setup_dataS(client);
             printf("LOG - Listagem requisitada pelo cliente\n");
-            if(connect(dataS,(struct sockaddr *)&thread_arg->client,sizeof(thread_arg->client)) < 0){
+            if(connect(dataS,(struct sockaddr *)&client,sizeof(client)) < 0){
                 perror("ERRO THREAD - connect(dataS)");
                 break;
             }
@@ -156,8 +158,6 @@ printf("Conexao aceita de %s porta %d, iniciando thread!\n",
 int setup_dataS(struct sockaddr_in info){
     
     int dataS;
-    info.sin_port=htons(3315);
-    info.sin_family=AF_INET;
     if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
         perror("ERRO - socket(dataS)");
         return -1;

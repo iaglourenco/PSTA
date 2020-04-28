@@ -105,7 +105,7 @@ do{
             dataS = setup_dataS(euMesmo);
 
             namelen = sizeof(server);
-            if((dataS = accept(dataS,(struct sockaddr *)&server,(socklen_t *)&namelen))){
+            if((dataS = accept(dataS,(struct sockaddr *)&server,(socklen_t *)&namelen)) == -1){
                 perror("ERRO - Accept(ctS)");
             }else{
                 if((recv(dataS,datasBuf,sizeof(datasBuf),0)) == -1){
