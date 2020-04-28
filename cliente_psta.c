@@ -35,7 +35,7 @@ int main(void){
         perror("Control Socket");
         exit(3);
     }
-  
+  dataS = setup_dataS(euMesmo);
 do{
     comando[0]=NULL;
     comando[1]=NULL;
@@ -102,8 +102,10 @@ do{
             perror("ERRO - send(ctS)");
         }else{
             //configuro o socket de dados
-            dataS = setup_dataS(euMesmo);
-
+            if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
+               perror("ERRO - socket(dataS)");
+                return -1;
+            }
             namelen = sizeof(server);
             if((dataS = accept(dataS,(struct sockaddr *)&server,(socklen_t *)&namelen)) == -1){
                 perror("ERRO - Accept(ctS)");
@@ -152,9 +154,9 @@ void help(){
 int setup_dataS(struct sockaddr_in euMesmo){
     
     int dataS;
-    euMesmo.sin_family=AF_INET;
+    euMesmo.sin_family = AF_INET;
     euMesmo.sin_port = htons(PORTA);
-    euMesmo.sin_addr.s_addr =INADDR_ANY;
+    euMesmo.sin_addr.s_addr = INADDR_ANY;
     if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
         perror("ERRO - socket(dataS)");
         return -1;
