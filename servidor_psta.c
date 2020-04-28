@@ -73,10 +73,9 @@ int main(int argc,char *argv[]){
         perror("ERRO - Listen(ctS)");
         exit(-1);
     }
-        
+    system("clear");
     do
     {
-        system("clear");
         printf("Servidor PSTA iniciado na porta %s!\nAguardando conexoes...\n",argv[1]);
         namelen = sizeof(client);
         if((ctSThread = accept(ctS,(struct sockaddr *)&client,(socklen_t *)&namelen)) == -1){
@@ -86,6 +85,7 @@ int main(int argc,char *argv[]){
         t_arg.ctS = ctSThread;
         memcpy(t_arg.comando,comando,sizeof(comando));
         t_arg.client = client;
+        
         thread_create_result = pthread_create(&ptid,NULL,&thread_func,&t_arg);
         if(thread_create_result != 0){
             perror("ERRO - thread_create()");
@@ -108,23 +108,25 @@ ptr_thread_arg thread_arg = (ptr_thread_arg)arg;
 int ctS = thread_arg->ctS;
 int dataS = thread_arg->dataS;
 int pid_thread = pthread_self();
-printf("Conexao aceita de %s porta %d, iniciando thread!\n",
-    inet_ntoa(thread_arg->client.sin_addr),
-    ntohs(thread_arg->client.sin_port));
+char *comando[80];
+
 printf("LOG - Thread iniciada, id: %u\n",pid_thread);
-     
+printf("Conexao aceita de %s porta %d, iniciando thread!\n",
+        inet_ntoa(thread_arg->client.sin_addr),
+        ntohs(thread_arg->client.sin_port));   
+
     do{
-        if(recv(ctS,thread_arg->comando[0],sizeof(thread_arg->comando[0]),0) == -1){
+        if(recv(ctS,comando[0],sizeof(comando[0]),0) == -1){
             perror("ERRO THREAD - Recv(ctS)");
             exit(-1);
         }
-        if (strcmp(thread_arg->comando[0],RECEBER) == 0){
+        if (strcmp(comando[0],RECEBER) == 0){
             /*Enviar arquivo ao cliente*/
             printf("LOG - Enviando arquivo\n");
-        }else if (strcmp(thread_arg->comando[0],ENVIAR) == 0){
+        }else if (strcmp(comando[0],ENVIAR) == 0){
             /* Receber arquivo do cliente */
             printf("LOG - Recebendo arquivo\n");
-        }else if (strcmp(thread_arg->comando[0],LISTAR) == 0){
+        }else if (strcmp(comando[0],LISTAR) == 0){
             /* Enviar listagem ao cliente*/
             dataS = setup_dataS(thread_arg->client);
             printf("LOG - Listagem requisitada pelo cliente\n");

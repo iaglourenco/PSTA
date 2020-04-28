@@ -82,7 +82,7 @@ do{
 
         }else{
             isConnected=1;
-            printf("(conectado a %s na porta %s\n",comando[1],comando[2]);
+            printf("(conectado a %s na porta %s)\n",comando[1],comando[2]);
         }
 
     }else if (strcmp(comando[0],RECEBER)==0){
@@ -141,8 +141,8 @@ void help(){
     printf("Ajuda: \n\n");
     printf("Comandos: \n");
     printf("- %s <nome do servidor> [<porta do servidor>]\n",CONECTAR);
-    printf("- %s <arquivo euMesmo> [<arquivo remoto>]\n",ENVIAR);
-    printf("- %s <arquivo remoto> [<arquivo euMesmo>]\n",RECEBER);
+    printf("- %s <arquivo local> [<arquivo remoto>]\n",ENVIAR);
+    printf("- %s <arquivo remoto> [<arquivo local>]\n",RECEBER);
     printf("- %s",LISTAR);
     printf("- %s",ENCERRAR);
     printf("- ajuda\n");
