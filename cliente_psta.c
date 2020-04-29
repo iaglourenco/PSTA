@@ -27,7 +27,7 @@ int setup_dataS(struct sockaddr_in);
 int main(void){
 
     char *comando[80],action[100],ctsBuf[20],datasBuf[200];
-    int i=0,ctS,dataS,ret,isConnected=0,inetaddr,namelen;
+    int i=0,ctS, dataS, dataSaccept, ret,isConnected=0, inetaddr, namelen;
     struct hostent *hostnm;
     struct sockaddr_in server,euMesmo;
     
@@ -35,6 +35,8 @@ int main(void){
         perror("Control Socket");
         exit(3);
     }
+
+    
   
 do{
     comando[0]=NULL;
@@ -105,15 +107,15 @@ do{
             dataS = setup_dataS(euMesmo);
 
             namelen = sizeof(server);
-            if((dataS = accept(dataS,(struct sockaddr *)&server,(socklen_t *)&namelen)) == -1){
+            if((dataSaccept = accept(dataS, (struct sockaddr *)&server, &namelen)) == -1){
                 perror("ERRO - Accept(ctS)");
             }else{
-                if((recv(dataS,datasBuf,sizeof(datasBuf),0)) == -1){
-                    perror("ERRO - Recv(dataS)");
+                if((recv(dataSaccept, datasBuf,sizeof(datasBuf),0)) == -1){
+                    perror("ERRO - Recv(dataSaccept)");
                 }else
-                    fprintf(stdout,"%s",datasBuf);    
-
+                    fprintf(stdout,"%s\n",datasBuf);    
             close(dataS);    
+            close(dataSaccept);  
             }
         }
         
@@ -170,4 +172,3 @@ int setup_dataS(struct sockaddr_in euMesmo){
     return dataS;
     
 }
-
