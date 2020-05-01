@@ -20,11 +20,11 @@
 #define ENVIAR "enviar"
 #define LISTAR "listar\n"
 #define ENCERRAR "encerrar\n"
+//#define DEBUG 1
 
 typedef struct
 {
     int ctS,dataS;
-    char *comando[80];
     struct sockaddr_in client;   
 
 } thread_arg, *ptr_thread_arg;
@@ -37,7 +37,6 @@ pthread_mutex_t mutex;
 int main(int argc,char *argv[]){
 
     int ctS,dataS,namelen,ctSThread,dataSThread;
-    char *comando[80];
     struct sockaddr_in euMesmo,client;
 
     //variaveis thread
@@ -74,16 +73,16 @@ int main(int argc,char *argv[]){
         exit(-1);
     }
     system("clear");
+    printf("Servidor PSTA iniciado na porta %s!\nAguardando conexoes...\n",argv[1]);
     do
     {
-        printf("Servidor PSTA iniciado na porta %s!\nAguardando conexoes...\n",argv[1]);
         namelen = sizeof(client);
         if((ctSThread = accept(ctS,(struct sockaddr *)&client,(socklen_t *)&namelen)) == -1){
             perror("ERRO - Accept(ctS)");
             exit(-1);
         }
+
         t_arg.ctS = ctSThread;
-        memcpy(t_arg.comando,comando,sizeof(comando));
         t_arg.client = client;
         
         thread_create_result = pthread_create(&ptid,NULL,&thread_func,&t_arg);
@@ -96,7 +95,7 @@ int main(int argc,char *argv[]){
     close(ctS);
     pthread_mutex_destroy(&mutex);
 
-    printf("Servidor PSTA encerrado!\n");
+    printf("Servidor PSTA encerrado!");
     return 0;
 }
 
@@ -110,47 +109,77 @@ int dataS = thread_arg->dataS;
 struct sockaddr_in client =thread_arg->client;
 client.sin_port = htons(3315);
 int pid_thread = pthread_self();
-char *comando[80];
-
-printf("LOG - Thread iniciada, id: %u\n",pid_thread);
-printf("Conexao aceita de %s porta %d, iniciando thread!\n",
+FILE *fp;
+char *comando[80];//array para o strtok
+char action[100];//entrada recebida em ascii
+char sendBuf[200];
+char list[200];
+printf("LOG - Conexao aceita de %s porta %d, thread ID: %u\n",
         inet_ntoa(thread_arg->client.sin_addr),
-        ntohs(thread_arg->client.sin_port));   
-
+        ntohs(thread_arg->client.sin_port),pid_thread);
     do{
-        if(recv(ctS,comando[0],sizeof(comando[0]),0) == -1){
+      
+     if(recv(ctS, action,sizeof(action),0) == -1){
             perror("ERRO THREAD - Recv(ctS)");
             exit(-1);
         }
-        if (strcmp(comando[0],RECEBER) == 0){
+        //tokenizacao da string recebida
+        comando[0]=strtok(action," ");
+        if(comando[0]!=NULL) comando[0][strlen(comando[0])]='\0';
+        else comando[0] = "ERRO";
+        comando[1]=strtok(NULL," ");
+        if(comando[1]!=NULL) comando[1][strlen(comando[1])]='\0';
+        comando[2]=strtok(NULL," ");
+        if(comando[2]!=NULL) comando[2][strlen(comando[2])-1]='\0';
+
+        #ifdef DEBUG
+            printf("-COMANDO0: %s",comando[0]);
+            printf("-COMANDO1: %s",comando[1]);
+            printf("-COMANDO2: %s",comando[2]);
+        #endif
+
+        if(strcmp(comando[0], ENCERRAR) ==0){
+            break;
+        }
+        if (strcmp(comando[0], RECEBER) == 0){
             /*Enviar arquivo ao cliente*/
-            printf("LOG - Enviando arquivo\n");
-        }else if (strcmp(comando[0],ENVIAR) == 0){
+            printf("LOG - Enviando arquivo ao cliente, id: %u\n",pid_thread);
+        }else if (strcmp(comando[0], ENVIAR) == 0){
             /* Receber arquivo do cliente */
-            printf("LOG - Recebendo arquivo\n");
-        }else if (strcmp(comando[0],LISTAR) == 0){
+            printf("LOG - Recebendo arquivo do cliente, id: %u\n",pid_thread);
+        }else if (strcmp(comando[0], LISTAR) == 0){
             /* Enviar listagem ao cliente*/
             dataS = setup_dataS(client);
-            printf("LOG - Listagem requisitada pelo cliente\n");
+            printf("LOG - Listagem requisitada pelo cliente, id: %u\n",pid_thread);
+            
             if(connect(dataS,(struct sockaddr *)&client,sizeof(client)) < 0){
                 perror("ERRO THREAD - connect(dataS)");
                 break;
             }
             pthread_mutex_trylock(&mutex);
-
-            /* Operação aqui */
-
-
+            
+            getcwd(sendBuf,sizeof(sendBuf));
+            fp = popen("ls","r");
+            strcat(sendBuf,"\n----\n");
+            while(fgets(list,sizeof(list),fp)!= NULL){
+                strcat(sendBuf,list);
+            }
+            pclose(fp);
             pthread_mutex_unlock(&mutex);
-            if(send(dataS,"OLA MUNDO",sizeof("OLA MUNDO"),0) < 0){
+            
+
+            if(send(dataS,sendBuf,sizeof(sendBuf),0) < 0){
                 perror("ERRO THREAD - send(dataS)");
                 break;
             }
+            
             close(dataS);
         }
 
-    }while(strcmp(thread_arg->comando[0],ENCERRAR) !=0);
-    printf("\nLOG - Thread encerrada, id: %u\n",pid_thread);
+    }while(strcmp(comando[0], ENCERRAR) !=0);
+    printf("LOG - Conexao de %s porta %d, encerrada, thread ID: %u\n",
+        inet_ntoa(thread_arg->client.sin_addr),
+        ntohs(thread_arg->client.sin_port),pid_thread);
     close(ctS);
 
 }

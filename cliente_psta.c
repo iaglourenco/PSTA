@@ -27,7 +27,7 @@ int setup_dataS(struct sockaddr_in);
 int main(void){
 
     char *comando[80],action[100],ctsBuf[20],datasBuf[200];
-    int i=0,ctS,dataS,ret,isConnected=0,inetaddr,namelen;
+    int i=0,ctS, dataS, dataSaccept, ret,isConnected=0, inetaddr, namelen;
     struct hostent *hostnm;
     struct sockaddr_in server,euMesmo;
     
@@ -35,7 +35,9 @@ int main(void){
         perror("Control Socket");
         exit(3);
     }
-  dataS = setup_dataS(euMesmo);
+
+    
+  
 do{
     comando[0]=NULL;
     comando[1]=NULL;
@@ -98,28 +100,29 @@ do{
     }else if (strcmp(comando[0],LISTAR)==0){
         /*Listar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
-        if((send(ctS,comando[0],sizeof(comando[0]),0)) < 0){
+        if((send(ctS,action,sizeof(action),0)) < 0){
             perror("ERRO - send(ctS)");
         }else{
             //configuro o socket de dados
-            if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
-               perror("ERRO - socket(dataS)");
-                return -1;
-            }
+            dataS = setup_dataS(euMesmo);
+
             namelen = sizeof(server);
-            if((dataS = accept(dataS,(struct sockaddr *)&server,(socklen_t *)&namelen)) == -1){
+            if((dataSaccept = accept(dataS, (struct sockaddr *)&server, &namelen)) == -1){
                 perror("ERRO - Accept(ctS)");
             }else{
-                if((recv(dataS,datasBuf,sizeof(datasBuf),0)) == -1){
-                    perror("ERRO - Recv(dataS)");
+                if((recv(dataSaccept, datasBuf,sizeof(datasBuf),0)) == -1){
+                    perror("ERRO - Recv(dataSaccept)");
                 }else
-                    fprintf(stdout,"%s",datasBuf);    
-
+                    fprintf(stdout,"\nDIRETORIO - %s\n",datasBuf);    
             close(dataS);    
+            close(dataSaccept);  
             }
         }
         
     }else if (strcmp(comando[0],ENCERRAR)==0){
+        if((send(ctS,action,sizeof(action),0)) < 0){
+            perror("ERRO - send(ctS)");
+        }
         break;
     }else if (strcmp(comando[0],"clear\n") == 0 || strcmp(comando[0],"cls\n") == 0 ){
         system("clear");
@@ -154,9 +157,9 @@ void help(){
 int setup_dataS(struct sockaddr_in euMesmo){
     
     int dataS;
-    euMesmo.sin_family = AF_INET;
+    euMesmo.sin_family=AF_INET;
     euMesmo.sin_port = htons(PORTA);
-    euMesmo.sin_addr.s_addr = INADDR_ANY;
+    euMesmo.sin_addr.s_addr =INADDR_ANY;
     if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
         perror("ERRO - socket(dataS)");
         return -1;
@@ -172,4 +175,3 @@ int setup_dataS(struct sockaddr_in euMesmo){
     return dataS;
     
 }
-
