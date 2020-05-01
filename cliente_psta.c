@@ -79,6 +79,13 @@ do{
             server.sin_addr.s_addr=inetaddr;
         }else server.sin_addr.s_addr=*((unsigned long *)hostnm->h_addr_list[0]);
 
+
+        if(isConnected){
+            if((send(ctS,action,sizeof(action),0)) < 0){
+            perror("ERRO - send(ctS)");
+        }
+        isConnected=0;
+        }
         if(connect(ctS,(struct sockaddr *)&server,sizeof(server)) < 0){
             perror("ERRO - connect(ctS)");
 
