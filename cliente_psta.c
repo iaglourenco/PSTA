@@ -113,11 +113,7 @@ do{
                 if((recv(dataSaccept, datasBuf,sizeof(datasBuf),0)) == -1){
                     perror("ERRO - Recv(dataSaccept)");
                 }else
-<<<<<<< HEAD
                     fprintf(stdout,"\nDIRETORIO - %s\n",datasBuf);    
-=======
-                    fprintf(stdout,"%s\n",datasBuf);    
->>>>>>> refs/remotes/origin/master
             close(dataS);    
             close(dataSaccept);  
             }
@@ -177,9 +173,4 @@ int setup_dataS(struct sockaddr_in euMesmo){
         return -1;
     }
     return dataS;
-    
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> refs/remotes/origin/master
