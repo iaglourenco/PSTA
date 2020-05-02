@@ -111,11 +111,13 @@ do{
         if(strcmp(comando[1],"\0")==0) goto erro;
         //se nao houver nome do arquivo local uso o do remoto
         if(comando[2] == NULL || strcmp(comando[2],"\n")==0 || strcmp(comando[2],"\0")==0) comando[2]=comando[1];
-
+        if((dataS=setup_dataS(euMesmo)) == -1){
+            break;
+        }
         if(send(ctS,action,sizeof(action),0)<0) perror("ERRO - send(ctS)");
         else{
             //configuro o socket de dados
-            dataS=setup_dataS(euMesmo);
+            
             namelen=sizeof(server);
             if((dataSaccept = accept(dataS,(struct sockaddr *)&server,&namelen)) == -1) perror("ERRO - Accept(dataS)");
             else{
@@ -143,11 +145,10 @@ do{
                     }
                 }
                 free(fileBuf);
-                close(dataS);    
                 close(dataSaccept);
             }
         }
-        
+        close(dataS);
     }else if (strcmp(comando[0],ENVIAR)==0){
         /*Enviar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
@@ -155,27 +156,50 @@ do{
         if(comando[1] == NULL) goto erro;
         if(strcmp(comando[1],"\n")==0) goto erro;
         if(strcmp(comando[1],"\0")==0) goto erro;
-
+        if((dataS=setup_dataS(euMesmo)) == -1){
+            break;
+        }
         if(send(ctS,action,sizeof(action),0)<0) perror("ERRO - send(ctS)");
         else{
             //configuro o socket de dados
-            dataS=setup_dataS(euMesmo);
             namelen=sizeof(server);
             if((dataSaccept = accept(dataS,(struct sockaddr *)&server,&namelen)) == -1) perror("ERRO - Accept(dataS)");
             else{
                 //Operação de envio
+                //gero o caminho do arquivo solicitado
+                getcwd(path,sizeof(path));
+                strcat(path,"/");
+                strcat(path,comando[1]);
 
+                fp = fopen(path,"rb");
+                if(fp){
+                //determino o tamanho do arquivo    
+                    fseek(fp,0,SEEK_END);
+                    size = ftell(fp);
+                    fseek(fp,0,SEEK_SET);
+                    fileBuf = malloc(size);
+                    fread(fileBuf,1,size,fp);
+                    fclose(fp);
+                //envio o tamanho do arquivo primeiro
+                sprintf(datasBuf,"%ld",size);
+                if(send(dataSaccept,datasBuf,sizeof(size),0) < 0){
+                    perror("ERRO - send(dataS)");
+                    break;
+                }
+                //depois o arquivo em si
+                if(send(dataSaccept,fileBuf,size,0) < 0){
+                    perror("ERRO - send(dataS)");
+                    break;
+                }
+                printf("Enviado %ld bytes para %s\n",size,inet_ntoa(server.sin_addr));
+                }else perror("ERRO - fread");
 
-
-
-
-
-
-            }   
+                free(fileBuf);
+                close(dataSaccept); 
+            } 
         }
-        
-    }
-    else if (strcmp(comando[0],LISTAR)==0){
+        close(dataS);
+    }else if (strcmp(comando[0],LISTAR)==0){
         /*Listar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
         if((send(ctS,action,sizeof(action),0)) < 0) perror("ERRO - send(ctS)");
@@ -194,18 +218,16 @@ do{
                 close(dataSaccept);  
             }
         }
-        
     }
-
     else if (strcmp(comando[0],ENCERRAR)==0)
     {
         if((send(ctS,action,sizeof(action),0)) < 0) perror("ERRO - send(ctS)");
         break;
     }
-    else if (strcmp(comando[0],"clear\n") == 0 || strcmp(comando[0],"cls\n") == 0 )
+    else if (strcmp(comando[0],"clear") == 0 || strcmp(comando[0],"cls") == 0 )
         system("clear");
     
-    else if (strcmp(comando[0],"ajuda\n") == 0)
+    else if (strcmp(comando[0],"ajuda") == 0)
         help();
     
 
