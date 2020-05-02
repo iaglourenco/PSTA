@@ -13,8 +13,8 @@
 #define CONECTAR "conectar"
 #define RECEBER "receber"
 #define ENVIAR "enviar"
-#define LISTAR "listar\n"
-#define ENCERRAR "encerrar\n"
+#define LISTAR "listar"
+#define ENCERRAR "encerrar"
 #define PORTA 3315
 
 
@@ -26,34 +26,31 @@ int setup_dataS(struct sockaddr_in);
 
 int main(void){
 
-    char *comando[80],action[100],ctsBuf[20],datasBuf[200];
-    int i=0,ctS, dataS, dataSaccept, ret,isConnected=0, inetaddr, namelen;
+    char *comando[80],action[100],action1[100],ctsBuf[20],datasBuf[10000],path[100],* fileBuf;
+    int i=0,ctS, dataS, dataSaccept,isConnected=0, inetaddr, namelen;
     struct hostent *hostnm;
+    long int size,ret;
     struct sockaddr_in server,euMesmo;
+    FILE *fp;
     
     if((ctS = socket(PF_INET,SOCK_STREAM,0)) < 0){
         perror("Control Socket");
         exit(3);
     }
 
-    
-  
 do{
     comando[0]=NULL;
     comando[1]=NULL;
     comando[2]=NULL;
     printf("psta>");  
-    fgets(action,sizeof(action),stdin);
-    comando[0]=strtok(action," ");
-    if(comando[0]!=NULL) comando[0][strlen(comando[0])]='\0';
-    else comando[0] = "ERRO";
+    fgets(action1,sizeof(action1),stdin);
+    memcpy(action,action1,sizeof(action));
+        
+    //extracao dos comandos
+    comando[0]=strtok(action1," \n");
+    comando[1]=strtok(NULL," \n");
+    comando[2]=strtok(NULL," \n");
     
-    comando[1]=strtok(NULL," ");
-    if(comando[1]!=NULL) comando[1][strlen(comando[1])]='\0';
-    
-    comando[2]=strtok(NULL," ");
-    if(comando[2]!=NULL) comando[2][strlen(comando[2])-1]='\0';
-
     #ifdef DEBUG
     printf("-COMANDO0: %s",comando[0]);
     printf("-COMANDO1: %s",comando[1]);
@@ -71,8 +68,10 @@ do{
         
         server.sin_family=AF_INET;
         server.sin_port = htons(atoi(comando[2]));
-        if( hostnm == (struct hostent *) 0){
-            if(inetaddr == INADDR_NONE){
+        if( hostnm == (struct hostent *) 0)
+        {
+            if(inetaddr == INADDR_NONE)
+            {
                 fprintf(stderr,"ERRO - nome do servidor\n");
                 goto erro;
             }
@@ -80,21 +79,25 @@ do{
         }else server.sin_addr.s_addr=*((unsigned long *)hostnm->h_addr_list[0]);
 
 
-        if(isConnected==1){
-            if((send(ctS,ENCERRAR,sizeof(ENCERRAR),0)) < 0){
-            perror("ERRO - send(ctS)");
-            }
+        if(isConnected==1)
+        {
+            printf("Desconectando de %s\n",inet_ntoa(server.sin_addr));
+        
+            if((send(ctS,ENCERRAR,sizeof(ENCERRAR),0)) < 0) perror("ERRO - send(ctS)");
+            
             close(ctS);
-            if((ctS = socket(PF_INET,SOCK_STREAM,0)) < 0){
+            if((ctS = socket(PF_INET,SOCK_STREAM,0)) < 0)
+            {
                     perror("Control Socket");
                     exit(3);
             }
            isConnected=0;
         }
-        if(connect(ctS,(struct sockaddr *)&server,sizeof(server)) < 0){
-            perror("ERRO - connect(ctS)");
-
-        }else{
+        
+        if(connect(ctS,(struct sockaddr *)&server,sizeof(server)) < 0) perror("ERRO - connect(ctS)");
+        
+        else
+        {
             isConnected=1;
             printf("(conectado a %s na porta %s)\n",comando[1],comando[2]);
         }
@@ -102,52 +105,118 @@ do{
     }else if (strcmp(comando[0],RECEBER)==0){
         /*Receber aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
+        //Nao digitou os parametros requeridos
+        if(comando[1] == NULL) goto erro;
+        if(strcmp(comando[1],"\n")==0) goto erro;
+        if(strcmp(comando[1],"\0")==0) goto erro;
+        //se nao houver nome do arquivo local uso o do remoto
+        if(comando[2] == NULL || strcmp(comando[2],"\n")==0 || strcmp(comando[2],"\0")==0) comando[2]=comando[1];
 
-
+        if(send(ctS,action,sizeof(action),0)<0) perror("ERRO - send(ctS)");
+        else{
+            //configuro o socket de dados
+            dataS=setup_dataS(euMesmo);
+            namelen=sizeof(server);
+            if((dataSaccept = accept(dataS,(struct sockaddr *)&server,&namelen)) == -1) perror("ERRO - Accept(dataS)");
+            else{
+                //Operação de recebimento
+                
+                //verifico o tamanho do arquivo que vou receber 
+                if((recv(dataSaccept, datasBuf,sizeof(long int),0)) == -1) perror("ERRO - Recv(dataSaccept)");
+                size = atol(datasBuf);
+                //aloco o espaco necessario
+                fileBuf = malloc(size);
+                if((ret = recv(dataSaccept, fileBuf,size,0)) == -1) perror("ERRO - Recv(dataSaccept)");
+                else{
+                    //Verifico se a leitura foi um sucesso
+                    if(strcmp(strerror(atoi(fileBuf)),"Success") == 0){
+                        //gero o caminho ao meu futuro arquivo
+                        getcwd(path,sizeof(path));
+                        strcat(path,"/");
+                        strcat(path,comando[2]);
+                        fp = fopen(path,"wb");  
+                        fwrite(fileBuf,size,1,fp);
+                        fclose(fp);
+                        printf("Recebidos %ld bytes de %s\n",ret,inet_ntoa(server.sin_addr));
+                    }else{
+                        printf("ERRO - %s\n",strerror(atoi(fileBuf)));
+                    }
+                }
+                free(fileBuf);
+                close(dataS);    
+                close(dataSaccept);
+            }
+        }
+        
     }else if (strcmp(comando[0],ENVIAR)==0){
         /*Enviar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
+        //Nao digitou os parametros requeridos
+        if(comando[1] == NULL) goto erro;
+        if(strcmp(comando[1],"\n")==0) goto erro;
+        if(strcmp(comando[1],"\0")==0) goto erro;
+
+        if(send(ctS,action,sizeof(action),0)<0) perror("ERRO - send(ctS)");
+        else{
+            //configuro o socket de dados
+            dataS=setup_dataS(euMesmo);
+            namelen=sizeof(server);
+            if((dataSaccept = accept(dataS,(struct sockaddr *)&server,&namelen)) == -1) perror("ERRO - Accept(dataS)");
+            else{
+                //Operação de envio
 
 
-    }else if (strcmp(comando[0],LISTAR)==0){
+
+
+
+
+
+            }   
+        }
+        
+    }
+    else if (strcmp(comando[0],LISTAR)==0){
         /*Listar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
-        if((send(ctS,action,sizeof(action),0)) < 0){
-            perror("ERRO - send(ctS)");
-        }else{
+        if((send(ctS,action,sizeof(action),0)) < 0) perror("ERRO - send(ctS)");
+        else
+        {
             //configuro o socket de dados
             dataS = setup_dataS(euMesmo);
 
             namelen = sizeof(server);
-            if((dataSaccept = accept(dataS, (struct sockaddr *)&server, &namelen)) == -1){
-                perror("ERRO - Accept(ctS)");
-            }else{
-                if((recv(dataSaccept, datasBuf,sizeof(datasBuf),0)) == -1){
-                    perror("ERRO - Recv(dataSaccept)");
-                }else
-                    fprintf(stdout,"\nDIRETORIO - %s\n",datasBuf);    
-            close(dataS);    
-            close(dataSaccept);  
+            if((dataSaccept = accept(dataS, (struct sockaddr *)&server, &namelen)) == -1) perror("ERRO - Accept(dataS)");
+            else{
+                
+                if((recv(dataSaccept, datasBuf,sizeof(datasBuf),0)) == -1) perror("ERRO - Recv(dataSaccept)");
+                else fprintf(stdout,"\nDIRETORIO - %s\n",datasBuf);    
+                close(dataS);    
+                close(dataSaccept);  
             }
         }
         
-    }else if (strcmp(comando[0],ENCERRAR)==0){
-        if((send(ctS,action,sizeof(action),0)) < 0){
-            perror("ERRO - send(ctS)");
-        }
+    }
+
+    else if (strcmp(comando[0],ENCERRAR)==0)
+    {
+        if((send(ctS,action,sizeof(action),0)) < 0) perror("ERRO - send(ctS)");
         break;
-    }else if (strcmp(comando[0],"clear\n") == 0 || strcmp(comando[0],"cls\n") == 0 ){
+    }
+    else if (strcmp(comando[0],"clear\n") == 0 || strcmp(comando[0],"cls\n") == 0 )
         system("clear");
-    }else if (strcmp(comando[0],"ajuda\n") == 0)
+    
+    else if (strcmp(comando[0],"ajuda\n") == 0)
         help();
-    else{
+    
+
+    else
 erro:
         printf("- Comando invalido! -\n- Se confuso esta, o comando 'ajuda' te guiara! - \n");
-    }
+    
     
 
 }while(strcmp(comando[0],ENCERRAR) != 0);
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 

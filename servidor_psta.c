@@ -18,9 +18,8 @@
 #define CONECTAR "conectar"
 #define RECEBER "receber"
 #define ENVIAR "enviar"
-#define LISTAR "listar\n"
-#define ENCERRAR "encerrar\n"
-//#define DEBUG 1
+#define LISTAR "listar"
+#define ENCERRAR "encerrar"
 
 typedef struct
 {
@@ -110,10 +109,13 @@ struct sockaddr_in client =thread_arg->client;
 client.sin_port = htons(3315);
 int pid_thread = pthread_self();
 FILE *fp;
+long size;
 char *comando[80];//array para o strtok
 char action[100];//entrada recebida em ascii
-char sendBuf[200];
-char list[200];
+char sendBuf[10000],list[10000];//strings para envio de dados
+char path[1000];
+char * fileBuf;
+
 printf("LOG - Conexao aceita de %s porta %d, thread ID: %u\n",
         inet_ntoa(thread_arg->client.sin_addr),
         ntohs(thread_arg->client.sin_port),pid_thread);
@@ -124,29 +126,78 @@ printf("LOG - Conexao aceita de %s porta %d, thread ID: %u\n",
             exit(-1);
         }
         //tokenizacao da string recebida
-        comando[0]=strtok(action," ");
-        if(comando[0]!=NULL) comando[0][strlen(comando[0])]='\0';
-        else comando[0] = "ERRO";
-        comando[1]=strtok(NULL," ");
-        if(comando[1]!=NULL) comando[1][strlen(comando[1])]='\0';
-        comando[2]=strtok(NULL," ");
-        if(comando[2]!=NULL) comando[2][strlen(comando[2])-1]='\0';
-
-        #ifdef DEBUG
-            printf("-COMANDO0: %s",comando[0]);
-            printf("-COMANDO1: %s",comando[1]);
-            printf("-COMANDO2: %s",comando[2]);
-        #endif
-
+        comando[0]=strtok(action," \n");
+        comando[1]=strtok(NULL," \n");
+        comando[2]=strtok(NULL," \n");
+        
         if(strcmp(comando[0], ENCERRAR) ==0){
             break;
         }
         if (strcmp(comando[0], RECEBER) == 0){
             /*Enviar arquivo ao cliente*/
+            dataS=setup_dataS(client);
             printf("LOG - Enviando arquivo ao cliente, id: %u\n",pid_thread);
+            pthread_mutex_trylock(&mutex);
+
+            if(connect(dataS,(struct sockaddr *)&client,sizeof(client)) < 0){
+                perror("ERRO THREAD - connect(dataS)");
+                break;
+            }
+            //gero o caminho do arquivo solicitado
+            getcwd(path,sizeof(path));
+            strcat(path,"/");
+            strcat(path,comando[1]);
+
+            fp = fopen(path,"rb");
+            //salvo o arquivo aberto em 'sendBuf'
+            if(fp) {
+                
+                fseek(fp,0,SEEK_END);
+                size = ftell(fp);
+                fseek(fp,0,SEEK_SET);
+                fileBuf = malloc(size);
+                fread(fileBuf,1,size,fp);
+                fclose(fp);
+
+                //envio o tamanho do arquivo primeiro
+                sprintf(sendBuf,"%ld",size);
+                if(send(dataS,sendBuf,sizeof(size),0) < 0){
+                    perror("ERRO THREAD - send(dataS)");
+                    break;
+                }
+                //depois o arquivo em si
+                if(send(dataS,fileBuf,size,0) < 0){
+                    perror("ERRO THREAD - send(dataS)");
+                    break;
+                }
+                printf("LOG - Enviado %ld bytes ao cliente, id: %u\n",size,pid_thread);
+            }else{ 
+                //Falha na leitura
+                perror("ERRO THREAD - fread");
+                sprintf(sendBuf,"%ld",sizeof(errno));
+                if(send(dataS,sendBuf,sizeof(long int),0) < 0){
+                    perror("ERRO THREAD - send(dataS)");
+                    break;
+                }
+                sprintf(sendBuf,"%d",errno);
+                if(send(dataS,sendBuf,sizeof(errno),0) < 0){
+                    perror("ERRO THREAD - send(dataS)");
+                    break;
+                }
+            }
+
+            pthread_mutex_unlock(&mutex);
+            close(dataS);
         }else if (strcmp(comando[0], ENVIAR) == 0){
             /* Receber arquivo do cliente */
             printf("LOG - Recebendo arquivo do cliente, id: %u\n",pid_thread);
+             //se nao houver nome do arquivo local uso o do remoto
+            if(comando[2] == NULL || strcmp(comando[2],"\n")==0 || strcmp(comando[2],"\0")==0) comando[2]=comando[1];
+
+
+
+
+
         }else if (strcmp(comando[0], LISTAR) == 0){
             /* Enviar listagem ao cliente*/
             dataS = setup_dataS(client);
@@ -165,14 +216,12 @@ printf("LOG - Conexao aceita de %s porta %d, thread ID: %u\n",
                 strcat(sendBuf,list);
             }
             pclose(fp);
-            pthread_mutex_unlock(&mutex);
-            
 
             if(send(dataS,sendBuf,sizeof(sendBuf),0) < 0){
                 perror("ERRO THREAD - send(dataS)");
                 break;
             }
-            
+            pthread_mutex_unlock(&mutex);
             close(dataS);
         }
 
