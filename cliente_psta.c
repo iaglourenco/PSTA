@@ -29,7 +29,7 @@ int main(void){
     char *comando[80],action[100],action1[100],ctsBuf[20],datasBuf[10000],path[100],* fileBuf;
     int i=0,ctS, dataS, dataSaccept,isConnected=0, inetaddr, namelen;
     struct hostent *hostnm;
-    long int size,ret;
+    ssize_t size,ret;
     struct sockaddr_in server,euMesmo;
     FILE *fp;
     
@@ -37,7 +37,21 @@ int main(void){
         perror("Control Socket");
         exit(3);
     }
-
+    euMesmo.sin_family=AF_INET;
+    euMesmo.sin_port = htons(PORTA);
+    euMesmo.sin_addr.s_addr =INADDR_ANY;
+    if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
+        perror("ERRO - socket(dataS)");
+        exit(EXIT_FAILURE);
+    }
+    if(bind(dataS,(struct sockaddr *)&euMesmo,sizeof(euMesmo)) < 0){
+        perror("ERRO - bind()");
+        exit(EXIT_FAILURE);  
+    }
+    if(listen(dataS,1) != 0){
+        perror("ERRO - listen()");
+        exit(EXIT_FAILURE);
+    }
 do{
     comando[0]=NULL;
     comando[1]=NULL;
@@ -62,23 +76,6 @@ do{
         if(comando[1] == NULL || comando[2] == NULL) goto erro;
         if(strcmp(comando[1],"\n")==0 ||strcmp(comando[2],"\n")==0) goto erro;
         if(strcmp(comando[1],"\0")==0 ||strcmp(comando[2],"\0")==0) goto erro;
-        
-        hostnm = gethostbyname(comando[1]);
-        inetaddr = inet_addr(comando[1]);
-        
-        server.sin_family=AF_INET;
-        server.sin_port = htons(atoi(comando[2]));
-        if( hostnm == (struct hostent *) 0)
-        {
-            if(inetaddr == INADDR_NONE)
-            {
-                fprintf(stderr,"ERRO - nome do servidor\n");
-                goto erro;
-            }
-            server.sin_addr.s_addr=inetaddr;
-        }else server.sin_addr.s_addr=*((unsigned long *)hostnm->h_addr_list[0]);
-
-
         if(isConnected==1)
         {
             printf("Desconectando de %s\n",inet_ntoa(server.sin_addr));
@@ -93,11 +90,23 @@ do{
             }
            isConnected=0;
         }
+
+        hostnm = gethostbyname(comando[1]);
+        inetaddr = inet_addr(comando[1]);
         
-        if(connect(ctS,(struct sockaddr *)&server,sizeof(server)) < 0) perror("ERRO - connect(ctS)");
-        
-        else
+        server.sin_family=AF_INET;
+        server.sin_port = htons(atoi(comando[2]));
+        if( hostnm == (struct hostent *) 0)
         {
+            if(inetaddr == INADDR_NONE)
+            {
+                fprintf(stderr,"ERRO - nome do servidor\n");
+                goto erro;
+            }
+            server.sin_addr.s_addr=inetaddr;
+        }else server.sin_addr.s_addr=*((unsigned long *)hostnm->h_addr_list[0]);
+        if(connect(ctS,(struct sockaddr *)&server,sizeof(server)) < 0) perror("ERRO - connect(ctS)");
+        else{
             isConnected=1;
             printf("(conectado a %s na porta %s)\n",comando[1],comando[2]);
         }
@@ -111,9 +120,6 @@ do{
         if(strcmp(comando[1],"\0")==0) goto erro;
         //se nao houver nome do arquivo local uso o do remoto
         if(comando[2] == NULL || strcmp(comando[2],"\n")==0 || strcmp(comando[2],"\0")==0) comando[2]=comando[1];
-        if((dataS=setup_dataS(euMesmo)) == -1){
-            break;
-        }
         if(send(ctS,action,sizeof(action),0)<0) perror("ERRO - send(ctS)");
         else{
             //configuro o socket de dados
@@ -124,8 +130,9 @@ do{
                 //Operação de recebimento
                 
                 //verifico o tamanho do arquivo que vou receber 
-                if((recv(dataSaccept, datasBuf,sizeof(long int),0)) == -1) perror("ERRO - Recv(dataSaccept)");
+                if((recv(dataSaccept, datasBuf,sizeof(datasBuf),0)) == -1) perror("ERRO - Recv(dataSaccept)");
                 size = atol(datasBuf);
+                printf("Tamanho do arquivo a receber: %lu\n",size);
                 //aloco o espaco necessario
                 fileBuf = malloc(size);
                 if((ret = recv(dataSaccept, fileBuf,size,0)) == -1) perror("ERRO - Recv(dataSaccept)");
@@ -139,7 +146,7 @@ do{
                         fp = fopen(path,"wb");  
                         fwrite(fileBuf,size,1,fp);
                         fclose(fp);
-                        printf("Recebidos %ld bytes de %s\n",ret,inet_ntoa(server.sin_addr));
+                        printf("Recebidos %lu bytes de %s\n",ret,inet_ntoa(server.sin_addr));
                     }else{
                         printf("ERRO - %s\n",strerror(atoi(fileBuf)));
                     }
@@ -148,7 +155,6 @@ do{
                 close(dataSaccept);
             }
         }
-        close(dataS);
     }else if (strcmp(comando[0],ENVIAR)==0){
         /*Enviar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
@@ -156,65 +162,69 @@ do{
         if(comando[1] == NULL) goto erro;
         if(strcmp(comando[1],"\n")==0) goto erro;
         if(strcmp(comando[1],"\0")==0) goto erro;
-        if((dataS=setup_dataS(euMesmo)) == -1){
-            break;
-        }
         if(send(ctS,action,sizeof(action),0)<0) perror("ERRO - send(ctS)");
         else{
-            //configuro o socket de dados
             namelen=sizeof(server);
             if((dataSaccept = accept(dataS,(struct sockaddr *)&server,&namelen)) == -1) perror("ERRO - Accept(dataS)");
             else{
                 //Operação de envio
-                //gero o caminho do arquivo solicitado
                 getcwd(path,sizeof(path));
                 strcat(path,"/");
                 strcat(path,comando[1]);
 
                 fp = fopen(path,"rb");
                 if(fp){
-                //determino o tamanho do arquivo    
+                    //verifico o tamanho do arquivo
                     fseek(fp,0,SEEK_END);
                     size = ftell(fp);
                     fseek(fp,0,SEEK_SET);
                     fileBuf = malloc(size);
                     fread(fileBuf,1,size,fp);
                     fclose(fp);
-                //envio o tamanho do arquivo primeiro
-                sprintf(datasBuf,"%ld",size);
-                if(send(dataSaccept,datasBuf,sizeof(size),0) < 0){
-                    perror("ERRO - send(dataS)");
-                    break;
+                    //envio o tamanho do arquivo primeiro
+                    sprintf(datasBuf,"%lu",size);
+                    if(send(dataSaccept,datasBuf,sizeof(size),0) < 0){
+                        perror("ERRO - send(dataSaccept)");
+                        break;
+                    }
+                    if(send(dataSaccept,fileBuf,size,0)<0){
+                        perror("ERRO - send(dataSaccept)");
+                        break;    
+                    }
+                    free(fileBuf);
+                    printf("Enviado %lu bytes para %s\n",size,inet_ntoa(server.sin_addr));
+                
+                }else{
+                    //Falha ao ler
+                    perror("ERRO - fread");
+                    sprintf(datasBuf,"%lu",sizeof(errno));
+                    if(send(dataSaccept,datasBuf,sizeof(errno),0)<0){
+                        perror("ERRO - send(dataS)");
+                        break;
+                    }
+                    sprintf(datasBuf,"%d",errno);
+                    if(send(dataSaccept,datasBuf,sizeof(errno),0)<0){
+                        perror("ERRO - send(dataS)");
+                        break;
+                    }
                 }
-                //depois o arquivo em si
-                if(send(dataSaccept,fileBuf,size,0) < 0){
-                    perror("ERRO - send(dataS)");
-                    break;
-                }
-                printf("Enviado %ld bytes para %s\n",size,inet_ntoa(server.sin_addr));
-                }else perror("ERRO - fread");
-
-                free(fileBuf);
-                close(dataSaccept); 
-            } 
+                close(dataSaccept);
+            }
         }
-        close(dataS);
+        
+        
     }else if (strcmp(comando[0],LISTAR)==0){
         /*Listar aqui*/
         if(!isConnected) printf("Por favor conecte-se antes!\n");
         if((send(ctS,action,sizeof(action),0)) < 0) perror("ERRO - send(ctS)");
         else
         {
-            //configuro o socket de dados
-            dataS = setup_dataS(euMesmo);
-
             namelen = sizeof(server);
             if((dataSaccept = accept(dataS, (struct sockaddr *)&server, &namelen)) == -1) perror("ERRO - Accept(dataS)");
             else{
                 
                 if((recv(dataSaccept, datasBuf,sizeof(datasBuf),0)) == -1) perror("ERRO - Recv(dataSaccept)");
-                else fprintf(stdout,"\nDIRETORIO - %s\n",datasBuf);    
-                close(dataS);    
+                else fprintf(stdout,"\nDIRETORIO - %s\n",datasBuf);        
                 close(dataSaccept);  
             }
         }
@@ -238,6 +248,7 @@ erro:
     
 
 }while(strcmp(comando[0],ENCERRAR) != 0);
+    close(dataS);
     exit(EXIT_SUCCESS);
 }
 
@@ -257,23 +268,3 @@ void help(){
     printf("- cls/clear\n");
 }
 
-int setup_dataS(struct sockaddr_in euMesmo){
-    
-    int dataS;
-    euMesmo.sin_family=AF_INET;
-    euMesmo.sin_port = htons(PORTA);
-    euMesmo.sin_addr.s_addr =INADDR_ANY;
-    if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
-        perror("ERRO - socket(dataS)");
-        return -1;
-    }
-    if(bind(dataS,(struct sockaddr *)&euMesmo,sizeof(euMesmo)) < 0){
-        perror("ERRO - bind()");
-        return -1;  
-    }
-    if(listen(dataS,1) != 0){
-        perror("ERRO - listen()");
-        return -1;
-    }
-    return dataS;
-}

@@ -109,14 +109,14 @@ struct sockaddr_in client =thread_arg->client;
 client.sin_port = htons(3315);
 int pid_thread = pthread_self();
 FILE *fp;
-long size,ret;
+ssize_t size,ret;
 char *comando[80];//array para o strtok
 char action[100];//entrada recebida em ascii
 char datasBuf[10000],list[10000];//strings para envio de dados
 char path[1000];
 char * fileBuf;
 
-printf("LOG - Conexao aceita de %s porta %d, thread ID: %u\n",
+printf("LOG - Conexao aceita de %s porta %d, cliente id: %u\n",
         inet_ntoa(thread_arg->client.sin_addr),
         ntohs(thread_arg->client.sin_port),pid_thread);
     do{
@@ -124,7 +124,8 @@ printf("LOG - Conexao aceita de %s porta %d, thread ID: %u\n",
     comando[1]=NULL;
     comando[2]=NULL;
      if(recv(ctS, action,sizeof(action),0) == -1){
-            perror("ERRO THREAD - Recv(ctS)");
+            //perror("ERRO - Recv(ctS)");
+            fprintf(stderr,"ERRO - Recv(ctS): %s, cliente id: %u\n",strerror(errno),pid_thread);
             exit(-1);
         }
         //tokenizacao da string recebida
@@ -137,130 +138,125 @@ printf("LOG - Conexao aceita de %s porta %d, thread ID: %u\n",
         }
         if (strcmp(comando[0], RECEBER) == 0){
             /*Enviar arquivo ao cliente*/
-            printf("LOG - Enviando arquivo ao cliente, id: %u\n",pid_thread);
             pthread_mutex_trylock(&mutex);
-
             dataS=setup_dataS(client);
             if(connect(dataS,(struct sockaddr *)&client,sizeof(client)) < 0){
-                perror("ERRO THREAD - connect(dataS)");
+                fprintf(stderr,"ERRO - connect(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
                 break;
             }
-            //gero o caminho do arquivo solicitado
-            getcwd(path,sizeof(path));
-            strcat(path,"/");
-            strcat(path,comando[1]);
+            else{
+                printf("LOG - Enviando arquivo ao cliente, id: %u\n",pid_thread);
+                //gero o caminho do arquivo solicitado
+                getcwd(path,sizeof(path));
+                strcat(path,"/");
+                strcat(path,comando[1]);
 
-            fp = fopen(path,"rb");
+                fp = fopen(path,"rb");
 
-            if(fp) {
-                //determino o tamanho do arquivo    
-                fseek(fp,0,SEEK_END);
-                size = ftell(fp);
-                fseek(fp,0,SEEK_SET);
-                fileBuf = malloc(size);
-                fread(fileBuf,1,size,fp);
-                fclose(fp);
-                free(fileBuf);
-                //envio o tamanho do arquivo primeiro
-                sprintf(datasBuf,"%ld",size);
-                if(send(dataS,datasBuf,sizeof(size),0) < 0){
-                    perror("ERRO THREAD - send(dataS)");
-                    break;
+                if(fp) {
+                    //determino o tamanho do arquivo    
+                    fseek(fp,0,SEEK_END);
+                    size = ftell(fp);
+                    fseek(fp,0,SEEK_SET);
+                    fileBuf = malloc(size);
+                    fread(fileBuf,size,1,fp);
+                    fclose(fp);
+                    //envio o tamanho do arquivo primeiro
+                    sprintf(datasBuf,"%lu",size);
+                    if(send(dataS,datasBuf,sizeof(datasBuf),0) < 0){
+                        fprintf(stderr,"ERRO - send(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
+                        break;
+                    }
+                    //depois o arquivo em si
+                    if((ret = send(dataS,fileBuf,size,0)) < 0){
+                        fprintf(stderr,"ERRO - send(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
+                        break;
+                    }
+                    free(fileBuf);
+                    printf("LOG - Enviado %lu bytes ao cliente, id: %u\n",ret,pid_thread);
+
+                }else{ 
+                    //Falha na leitura
+                    fprintf(stderr,"ERRO - fread: %s, cliente id: %u\n",strerror(errno),pid_thread);
+                    sprintf(datasBuf,"%lu",sizeof(errno));
+                    if(send(dataS,datasBuf,sizeof(long),0) < 0){
+                        fprintf(stderr,"ERRO - send(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
+                        break;
+                    }
+                    sprintf(datasBuf,"%d",errno);
+                    if(send(dataS,datasBuf,sizeof(errno),0) < 0){
+                        fprintf(stderr,"ERRO - send(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
+                        break;
+                    }
                 }
-                //depois o arquivo em si
-                if(send(dataS,fileBuf,size,0) < 0){
-                    perror("ERRO THREAD - send(dataS)");
-                    break;
-                }
-                printf("LOG - Enviado %ld bytes ao cliente, id: %u\n",size,pid_thread);
-                
-            }else{ 
-                //Falha na leitura
-                perror("ERRO THREAD - fread");
-                sprintf(datasBuf,"%ld",sizeof(errno));
-                if(send(dataS,datasBuf,sizeof(long int),0) < 0){
-                    perror("ERRO THREAD - send(dataS)");
-                    break;
-                }
-                sprintf(datasBuf,"%d",errno);
-                if(send(dataS,datasBuf,sizeof(errno),0) < 0){
-                    perror("ERRO THREAD - send(dataS)");
-                    break;
-                }
-            }
+            }   
             close(dataS);
             pthread_mutex_unlock(&mutex);
             
         }else if (strcmp(comando[0], ENVIAR) == 0){
             /* Receber arquivo do cliente */
-            printf("LOG - Recebendo arquivo do cliente, id: %u\n",pid_thread);
-            pthread_mutex_trylock(&mutex);
-             //se nao houver nome do arquivo local uso o do remoto
             if(comando[2] == NULL || strcmp(comando[2],"\n")==0 || strcmp(comando[2],"\0")==0) comando[2]=comando[1];
-            dataS = setup_dataS(client);
-            if(connect(dataS,(struct sockaddr *)&client,sizeof(client)) < 0){
-                perror("ERRO THREAD - connect(dataS)");
+            pthread_mutex_trylock(&mutex);
+            dataS=setup_dataS(client);
+            if(connect(dataS,(struct sockaddr *)&client,sizeof(client))<0){
+                fprintf(stderr,"ERRO - connect(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
                 break;
-            }
-            //verifico o tamanho do arquivo que vou receber 
-                if((recv(dataS, datasBuf,sizeof(long int),0)) == -1) perror("ERRO THREAD- Recv(dataS)");
+            }else{
+                printf("LOG - Recebendo arquivo do cliente, id: %u\n",pid_thread);
+                //recebo o tamanho do arquivo
+                if(recv(dataS,datasBuf,sizeof(size),0) == -1) fprintf(stderr,"ERRO - recv(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
                 size = atol(datasBuf);
-                //aloco o espaco necessario
                 fileBuf = malloc(size);
-                if((ret = recv(dataS, fileBuf,size,0)) == -1) perror("ERRO THREAD- Recv(dataS)");
+                if((ret = recv(dataS,fileBuf,size,0)) == -1) fprintf(stderr,"ERRO - recv(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
                 else{
-                    //Verifico se a leitura foi um sucesso
                     if(strcmp(strerror(atoi(fileBuf)),"Success") == 0){
-                        //gero o caminho ao meu futuro arquivo
                         getcwd(path,sizeof(path));
                         strcat(path,"/");
                         strcat(path,comando[2]);
-                        fp = fopen(path,"wb");  
+                        fp = fopen(path,"wb");
                         fwrite(fileBuf,size,1,fp);
                         fclose(fp);
-                        
-                        printf("LOG - Recebidos %ld bytes de %s\n",ret,inet_ntoa(client.sin_addr));
-                        
+                        printf("LOG - Recebidos %lu bytes do cliente, id: %u\n",ret,pid_thread);
                     }else{
                         printf("ERRO - %s\n",strerror(atoi(fileBuf)));
                     }
                 }
-                close(dataS);
                 free(fileBuf);
-                pthread_mutex_unlock(&mutex);
+            }
+            close(dataS);
+            pthread_mutex_unlock(&mutex);
         }else if (strcmp(comando[0], LISTAR) == 0){
             /* Enviar listagem ao cliente*/
             dataS = setup_dataS(client);
-            printf("LOG - Listagem requisitada pelo cliente, id: %u\n",pid_thread);
             pthread_mutex_trylock(&mutex);
 
             if(connect(dataS,(struct sockaddr *)&client,sizeof(client)) < 0){
-                perror("ERRO THREAD - connect(dataS)");
+                fprintf(stderr,"ERRO - connect(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
                 break;
-            }
-           
-            
-            getcwd(datasBuf,sizeof(datasBuf));
-            fp = popen("ls","r");
-            strcat(datasBuf,"\n----\n");
-            while(fgets(list,sizeof(list),fp)!= NULL){
-                strcat(datasBuf,list);
-            }
-            pclose(fp);
+            }else{
+                getcwd(datasBuf,sizeof(datasBuf));
+                fp = popen("ls","r");
+                strcat(datasBuf,"\n----\n");
+                while(fgets(list,sizeof(list),fp)!= NULL){
+                    strcat(datasBuf,list);
+                }
+                pclose(fp);
 
-            if(send(dataS,datasBuf,sizeof(datasBuf),0) < 0){
-                perror("ERRO THREAD - send(dataS)");
-                break;
+                if(send(dataS,datasBuf,sizeof(datasBuf),0) < 0){
+                    fprintf(stderr,"ERRO - send(dataS): %s, cliente id: %u\n",strerror(errno),pid_thread);
+                    break;
+                }
+                printf("LOG - Listagem enviada ao cliente, id: %u\n",pid_thread);
+                pthread_mutex_unlock(&mutex);
+                close(dataS);
             }
-            pthread_mutex_unlock(&mutex);
-            close(dataS);
         }
-
     }while(strcmp(comando[0], ENCERRAR) !=0);
-    printf("LOG - Conexao de %s porta %d, encerrada, thread ID: %u\n",
+    printf("LOG - Conexao de %s porta %d, encerrada, cliente id: %u\n",
         inet_ntoa(thread_arg->client.sin_addr),
         ntohs(thread_arg->client.sin_port),pid_thread);
     close(ctS);
+    close(dataS);
 
 }
 
