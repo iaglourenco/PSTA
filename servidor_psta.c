@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
 #define CONECTAR "conectar"
 #define RECEBER "receber"
@@ -69,10 +70,18 @@ int main(int argc,char *argv[]){
         exit(1);
     }
 
+
+
     //Guarda o endereço do servidor para conexoes na porta de dados do cliente
     euMesmo.sin_family = AF_INET;
     euMesmo.sin_port = htons(atoi(argv[1]));
     euMesmo.sin_addr.s_addr = INADDR_ANY;
+
+    if(ntohs(euMesmo.sin_port) == 0){
+        printf("ERRO - Porta invalida\n");
+        exit(1);
+    }
+
     if(bind(ctS,(struct sockaddr *)&euMesmo,sizeof(euMesmo))<0){
         perror("ERRO - bind(ctS)");
         exit(errno);
@@ -83,7 +92,7 @@ int main(int argc,char *argv[]){
     }
 
     system("clear");
-    printf("Servidor PSTA iniciado na porta %s!\nAguardando conexoes...\n",argv[1]);
+    printf("Servidor PSTA iniciado na porta %d!\nAguardando conexoes...\n",ntohs(euMesmo.sin_port));
     
     do
     {
