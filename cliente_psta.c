@@ -1,4 +1,3 @@
-//test
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +9,8 @@
 #include <netdb.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <time.h>
+#include <signal.h>
 
 #define CONECTAR "conectar"
 #define RECEBER "receber"
@@ -17,8 +18,6 @@
 #define LISTAR "listar"
 #define ENCERRAR "encerrar"
 #define PORTA 3315
-
-
 
 //#define DEBUG 1
 
@@ -28,19 +27,41 @@ int setup_dataS(struct sockaddr_in);
 int main(void){
 
     char *comando[80],action[100],action1[100],ctsBuf[20],datasBuf[10000],path[100],* fileBuf;
-    int i=0,ctS, dataS, dataSaccept,isConnected=0, inetaddr, namelen;
+    int i=0,ctS, dataS, dataSaccept,isConnected=0,inetaddr, namelen;
     struct hostent *hostnm;
     ssize_t size,ret;
     struct sockaddr_in server,euMesmo;
     FILE *fp;
+    socklen_t len = sizeof(euMesmo);
+
     
+
+    //gerar numero aleatorio pra criar porta
+    time_t t;
+    srand((unsigned)time(&t));
+
     if((ctS = socket(PF_INET,SOCK_STREAM,0)) < 0){
         perror("Control Socket");
         exit(3);
     }
+   
+
+    char portC1[10];
+    int portC = htons(rand());
     euMesmo.sin_family=AF_INET;
-    euMesmo.sin_port = htons(PORTA);
+    euMesmo.sin_port = portC;
     euMesmo.sin_addr.s_addr =INADDR_ANY;
+
+    //Apenas copio a porta gerada formatada
+    snprintf(portC1,8,"%d",portC);
+
+    #ifdef DEBUG
+    //Print da porta que usarei para receber dados, enviarei isso ao servidor quando conectar
+    printf("Porta atribuida: %i, Porta gerada: %i\n",euMesmo.sin_port, portC);
+    #endif
+    
+
+
     if((dataS = socket(AF_INET,SOCK_STREAM,0)) < 0){
         perror("ERRO - socket(dataS)");
         exit(EXIT_FAILURE);
@@ -53,10 +74,20 @@ int main(void){
         perror("ERRO - listen()");
         exit(EXIT_FAILURE);
     }
+
+
+/*if (getsockname(dataS, (struct sockaddr *)&euMesmo, &len) == -1)
+    perror("getsockname");
+else
+    printf("port number %d\n", ntohs(euMesmo.sin_port));
+*/
+
 do{
-    comando[0]=NULL;
-    comando[1]=NULL;
-    comando[2]=NULL;
+    comando[0]=NULL;//conectar,receber,listar,enviar,encerrar,ajuda,cls/clear
+    comando[1]=NULL;//segunda parte do comando, usado em algumas operacoes
+    comando[2]=NULL;//mesmo do de cima
+    comando[3]=NULL; //porta de dados
+    
     printf("psta>");  
     fgets(action1,sizeof(action1),stdin);
     memcpy(action,action1,sizeof(action));
@@ -65,11 +96,13 @@ do{
     comando[0]=strtok(action1," \n");
     comando[1]=strtok(NULL," \n");
     comando[2]=strtok(NULL," \n");
+    comando[3]=strtok(NULL," \n");
     
     #ifdef DEBUG
     printf("-COMANDO0: %s",comando[0]);
     printf("-COMANDO1: %s",comando[1]);
     printf("-COMANDO2: %s",comando[2]);
+    printf("-COMANDO3: %s",comando[3]);
     #endif
 
     if(strcmp(comando[0],CONECTAR)==0){
@@ -91,7 +124,7 @@ do{
             }
            isConnected=0;
         }
-
+        
         hostnm = gethostbyname(comando[1]);
         inetaddr = inet_addr(comando[1]);
         
@@ -111,6 +144,9 @@ do{
             isConnected=1;
             printf("(conectado a %s na porta %s)\n",comando[1],comando[2]);
         }
+
+        //mandar port de dados de si mesmo para seridor
+        if((send(ctS,&portC,sizeof(portC),0)) < 0) perror("ERRO - send(Porta)");
 
     }else if (strcmp(comando[0],RECEBER)==0){
         /*Receber aqui*/
@@ -230,9 +266,7 @@ do{
             }
         }
     }
-    else if (strcmp(comando[0],ENCERRAR)==0)
-    {
-        if((send(ctS,action,sizeof(action),0)) < 0) perror("ERRO - send(ctS)");
+    else if (strcmp(comando[0],ENCERRAR)==0){
         break;
     }
     else if (strcmp(comando[0],"clear") == 0 || strcmp(comando[0],"cls") == 0 )
@@ -247,16 +281,26 @@ erro:
         printf("- Comando invalido! -\n- Se confuso esta, o comando 'ajuda' te guiara! - \n");
     
     
-
+    
 }while(strcmp(comando[0],ENCERRAR) != 0);
+
+    if(isConnected==1){
+        if((send(ctS,ENCERRAR,sizeof(ENCERRAR),0)) < 0) {
+            perror("ERRO - send(ctS) SINAL NAO ENVIADO");
+            close(dataS);
+            close(ctS);
+            exit(errno);
+        }
+    }
     close(dataS);
+    close(ctS);
     exit(EXIT_SUCCESS);
 }
 
 
 void help(){
     printf("PSTR 1.0\n");
-    printf("by @adrianomunin,@fabioirokawa\n@iaglourenco,@lucasrcoutinho,@marcoslelis\nmore info: https://github.com/iaglourenco/PSTR\n\n");
+    printf("by @adrianomunin,@fabioirokawa\n@iaglourenco,@lucasrcoutinho,@marcoslelis\nmore info: https://github.com/iaglourenco/PSTA\n\n");
 
     printf("Ajuda: \n\n");
     printf("Comandos: \n");
